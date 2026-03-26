@@ -6,106 +6,52 @@ description: >
   "全网最低价"、"有没有优惠券"、"值不值得买"、"价格走势"、"优惠"、"便宜"、"划算"、"打折"、
   "降价"、"满减"、"省钱"、"买不买"、"该不该入手"时使用。
   不适用于：快递查询、汇率换算、天气查询、闲鱼二手交易等非购物比价场景。
-version: 2.0.0
+version: 2.1.0
 allowed-tools: Bash({baseDir}/scripts/run.sh:*),Read({baseDir}/**)
 ---
 
 # 省钱购物助手
 
-一次接口调用，同时获取商品信息 + 比价 + 历史价格，帮用户快速决策。
+一次 `convert` 调用 → 同时拿到商品信息 + 比价 + 历史价 → 直接按模板渲染输出。
 
-## 接口说明
-
-所有接口通过 `bash {baseDir}/scripts/run.sh call <接口名> [参数]` 调用。
-
-### convert（核心接口，一次返回全部数据）
+## 快速开始
 
 ```bash
+# 90% 的场景只需这一条命令
 bash {baseDir}/scripts/run.sh call convert --tpwd "<链接或口令>"
 ```
 
-**参数**：
-
-| 参数 | 必填 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--tpwd` | 是 | — | 商品链接或淘口令 |
-
-**返回字段**（JSON）：
-
-| 字段 | 说明 | 示例 |
-|------|------|------|
-| `itemTitle` | 商品标题 | `"金龙鱼高筋麦芯小麦粉1kg"` |
-| `itemPrice` | 原价（元） | `"7.35元"` |
-| `finalPrice` | 到手价（元） | `"6.34元"` |
-| `couponAmount` | 优惠券金额 | `"1.00元"` |
-| `savingMoney` | 省钱金额 | `"1.01元"` |
-| `totalComm` | 佣金 | `"0.04元"` |
-| `shopType` | 平台（中文） | `"天猫"` |
-| `shopName` | 店铺名 | `"淘宝农场"` |
-| `itemPicUrl` | 商品图片 | URL |
-| `tToken` | 淘口令 | `"￥ HU591 ZPZh5bOSLP0￥"` |
-| `clickUrl` | 购买链接 | URL |
-| `countrySubsidyFlag` | 国补标记 | `"无国补"` 或 `"有国补"` |
-| `promotionTagList` | 促销标签 | `["淘金币频道抵扣1%起"]` |
-| `comparePriceData` | **比价数据**（默认返回） | 见下方 |
-| `historyPriceData` | **历史价数据**（默认返回） | 见下方 |
-
-**`comparePriceData` 结构**（与单独比价接口返回结构一致）：
-
-```json
-{
-  "totalCount": 2,
-  "floorPriceItem": { "shopType": "淘宝", "shopName": "xxx", "price": "4290.59", "badge": "全网最低", ... },
-  "topLowestItems": [ ... ],
-  "compareViewUrl": "https://..."
-}
-```
-
-**`historyPriceData` 结构**（与单独历史价接口返回结构一致）：
-
-```json
-{
-  "historyLowestPrice": "6.47",
-  "historyLowestDate": "2026-02-28 00:02:23",
-  "lowest30DaysPrice": "6.47",
-  "usualPrice": "6.47",
-  "shopType": "天猫",
-  "curveData": [ { "date": "2026-03-09", "price": "6.47" }, ... ]
-}
-```
-
-> `includeComparePrice` 和 `includeHistoryPrice` 服务端默认 `true`，无需传参即返回比价和历史价。
-> 若某项查询失败，对应字段不存在（不影响主数据）。
-
-### compare-price（单独比价，仅在用户明确要求比价时使用）
-
-```bash
-bash {baseDir}/scripts/run.sh call compare-price --productIdentifier "<链接或口令>"
-```
-
-### history-price（单独历史价，仅在用户明确要求历史价时使用）
-
-```bash
-bash {baseDir}/scripts/run.sh call history-price --productIdentifier "<链接或口令>"
-```
+返回 JSON 包含：商品详情 + `comparePriceData`（比价） + `historyPriceData`（历史价）。
+服务端 `includeComparePrice` 和 `includeHistoryPrice` 默认 `true`，无需额外传参。
 
 ## 路由决策
 
-| 用户意图 | 调用方式 |
-|----------|----------|
-| 发了链接/口令，没说别的 | `convert`（一次拿全部） |
-| "值不值得买"、"该不该入手" | `convert`（一次拿全部） |
-| 明确只说"转链"、"优惠券" | `convert`（一次拿全部，多余数据忽略即可） |
-| 明确只说"比价"、"哪家便宜" | `compare-price` |
-| 明确只说"历史价"、"价格走势" | `convert`（需要到手价做对比） |
+**默认用 `convert`**。仅以下两种场景用单独接口：
 
-**核心原则**：90% 的场景只需调 1 次 `convert`。
+| 用户明确说 | 调用 |
+|-----------|------|
+| "比价"、"哪家便宜" | `compare-price --productIdentifier "<链接>"` |
+| "历史价"、"价格走势" | `convert`（需要到手价做基准对比） |
+
+其他所有情况（发链接、问值不值得买、问优惠券、没说意图）→ 一律 `convert`。
+
+## 工作流
+
+```
+收到链接/口令
+  → 输出"正在查询商品信息..."
+  → 调用 convert
+  → 拿到 JSON
+  → 按下方模板一次性渲染：购买卡片 + 购买建议 + 比价结论
+```
+
+没有链接时先问用户要。
 
 ## 输出模板
 
-收到接口数据后，按以下模板**直接渲染输出**，不要自行组织语言。
+拿到 JSON 后**直接按模板填充输出**。三个区块用 `---` 分隔。
 
-### 购买卡片
+### 区块 1：购买卡片
 
 ```
 ![{itemTitle}]({itemPicUrl})
@@ -121,35 +67,43 @@ bash {baseDir}/scripts/run.sh call history-price --productIdentifier "<链接或
 | 佣金 | ¥{totalComm} |
 | 平台 | {shopType} · {shopName} |
 
+{promotionTagList 非空 → 🏷️ 逐个展示标签}
+{countrySubsidyFlag 不是"无国补" → 🏷️ 支持国家补贴}
+
 👉 复制口令打开：`{tToken}`
 [点击购买]({clickUrl})
 ```
 
-规则：`tToken` 不存在时只显示 `[点击购买]({clickUrl})`；`countrySubsidyFlag` 不是"无国补"时追加 🏷️ 支持国家补贴；`promotionTagList` 非空时追加标签。
+`tToken` 不存在时省略口令行，只保留 `[点击购买]({clickUrl})`。
+`itemPicUrl` 不存在时省略图片行。
 
-### 购买建议（基于 historyPriceData）
+### 区块 2：购买建议
 
-先计算：
-- 价格位置 = (到手价 - 历史最低价) / (日常价 - 历史最低价)，日常价 = 历史最低价时为 0
+**数据来源**：`finalPrice`（到手价）+ `historyPriceData`。若 `historyPriceData` 不存在 → 输出"暂无历史价格数据"并跳过本区块。
 
-判断规则（命中即停）：
+**价格字段带"元"后缀**（如 `"6.34元"`），计算时取数字部分。
 
-| 条件 | 输出 |
-|------|------|
-| 到手价 < 历史最低价 且差额 ≥ ¥20 或 ≥ 5% | 🟢 **比历史最低还便宜 ¥X，强烈推荐入手！** |
-| 到手价 < 历史最低价 | 🟢 **略低于历史最低，适合入手** |
-| 日常价与历史最低差 < 3% 且到手价在日常价 ±3% | 🟡 **价格长期稳定在 ¥X，需要就买** |
-| 到手价 ≤ 历史最低 × 1.03 | 🟢 **历史最低附近，适合入手** |
-| 位置 ≤ 0.3 | 🟢 **接近历史低点，适合入手** |
-| 位置 0.3~0.7 | 🟡 **价格适中**（距大促 ≤ 30天提示等等） |
-| 位置 > 0.7 | 🔴 **高于日常，建议等降价** |
+**判断规则**（从上到下，命中即停）：
 
-大促日历：年货节(1月)、38节(3月)、618(6月)、双11(11月)、双12(12月)
+| # | 条件 | 结论 |
+|---|------|------|
+| 1 | 到手价 < 历史最低 且（差额 ≥ ¥20 或 ≥ 5%） | 🟢 比历史最低还便宜 ¥{差额}，强烈推荐入手！ |
+| 2 | 到手价 < 历史最低 | 🟢 略低于历史最低，适合入手 |
+| 3 | 波动幅度 < 3% 且到手价在日常价 ±3% | 🟡 价格长期稳定在 ¥{日常价}，需要就买 |
+| 4 | 到手价 ≤ 历史最低 × 1.03 | 🟢 历史最低附近，适合入手 |
+| 5 | 价格位置 ≤ 0.3 | 🟢 接近历史低点，适合入手 |
+| 6 | 价格位置 0.3~0.7 | 🟡 价格适中，{大促提示} |
+| 7 | 价格位置 > 0.7 | 🔴 高于日常水平，建议等降价 |
+
+计算公式：
+- 波动幅度 = (日常价 - 历史最低) / 日常价
+- 价格位置 = (到手价 - 历史最低) / (日常价 - 历史最低)，分母为 0 时位置 = 0
+- 大促日历：年货节(1月) 38节(3月) 618(6月) 双11(11月) 双12(12月)；距下次 ≤ 30天 → 提示可以等
 
 ```
-### 💰 购买建议：{结论}
+### 💰 购买建议：{🟢/🟡/🔴 结论}
 
-{详情}
+{一句话解释}
 
 | 指标 | 价格 | 备注 |
 |------|------|------|
@@ -160,12 +114,12 @@ bash {baseDir}/scripts/run.sh call history-price --productIdentifier "<链接或
 
 | 日期 | 价格 | 趋势 |
 |------|------|------|
-| {date} | ¥{price} | {🟢降/🔴涨/➡️平} |
+| {date} | ¥{price} | {与上一条比：降🟢 涨🔴 平➡️，首条➡️} |
 ```
 
-### 比价结论（基于 comparePriceData）
+### 区块 3：比价结论
 
-若 `comparePriceData` 不存在或 `topLowestItems` 为空 → 输出"暂无跨平台比价数据"。
+**数据来源**：`comparePriceData`。若不存在或 `topLowestItems` 为空 → 输出"暂无跨平台比价数据"。
 
 ```
 ### 💰 比价结论：{结论}
@@ -175,22 +129,29 @@ bash {baseDir}/scripts/run.sh call history-price --productIdentifier "<链接或
 | {shopType} | {shopName} | **¥{price}** | {badge 或 —} |
 ```
 
-## 完整输出示例
+比价结论规则：
+- 仅 1 家 → "仅找到一家在售"
+- 最低比次低便宜 > 5% 且 > ¥10 → 🟢 推荐 {平台}·{店铺}，比第二低便宜 ¥X
+- 差价 ≤ 5% 或 ≤ ¥10 → 🟡 多家价格接近，建议选常用平台
+
+## 完整示例
+
+以下是一个**真实接口返回 → 最终输出**的完整示例，请严格模仿此格式：
 
 <example>
-用户：帮我看看这个 https://e.tb.cn/h.xxx
+用户：帮我看看这个 https://e.tb.cn/h.iWHhFu8oHNytYbb
 
 助手：
 
 正在查询商品信息...
 
-[调用 convert --tpwd "https://e.tb.cn/h.xxx"]
+[调用 bash {baseDir}/scripts/run.sh call convert --tpwd "https://e.tb.cn/h.iWHhFu8oHNytYbb"]
 
-[拿到返回 JSON 后，一次性渲染以下全部内容]
+[接口返回后，直接输出以下内容]
 
-![金龙鱼高筋麦芯小麦粉1kg](https://img.alicdn.com/xxx.jpg)
+![金龙鱼高筋麦芯小麦粉1kg](https://img.alicdn.com/bao/uploaded/i3/3937219703/O1CN01C9uNI52LY28zuHGyn.jpg)
 
-### 金龙鱼高筋麦芯小麦粉1kg
+### 金龙鱼高筋麦芯小麦粉1kg袋装面粉家用包子饺子馒头手擀面高筋
 
 | 项目 | 详情 |
 |------|------|
@@ -204,13 +165,13 @@ bash {baseDir}/scripts/run.sh call history-price --productIdentifier "<链接或
 🏷️ 淘金币频道抵扣1%起
 
 👉 复制口令打开：`￥ HU591 ZPZh5bOSLP0￥`
-[点击购买](https://s.click.taobao.com/xxx)
+[点击购买](https://s.click.taobao.com/na6oIkm)
 
 ---
 
 ### 💰 购买建议：🟡 价格长期稳定在 ¥6.47 左右，需要就买
 
-该商品价格波动极小，不存在更低的入手时机。
+该商品价格波动极小（波动幅度 0%），不存在更低的入手时机。
 
 | 指标 | 价格 | 备注 |
 |------|------|------|
@@ -239,13 +200,23 @@ bash {baseDir}/scripts/run.sh call history-price --productIdentifier "<链接或
 
 ## 错误处理
 
+接口返回错误时，告知用户具体原因并给建议，不要返回原始 JSON：
+
 | 现象 | 用户可见提示 |
 |------|-------------|
 | `missing_parameter` | 请发一下商品链接或淘口令 |
-| `errorMessage: "未找到相关商品"` | 没找到商品信息，请检查链接 |
-| `topLowestItems: null` | 暂无比价数据 |
+| `errorMessage: "未找到相关商品"` | 没找到商品信息，请检查链接是否正确 |
+| `topLowestItems` 为空 | 暂无比价数据 |
 | `historyPriceData` 不存在 | 暂无历史价格数据 |
-| `api_unavailable` | 服务暂时不可用，请稍后再试 |
+| `api_unavailable` / HTTP 错误 | 服务暂时不可用，请稍后再试 |
+
+## 不适用场景
+
+以下情况**不要**调用本 Skill：
+- 快递物流查询
+- 汇率换算、天气查询
+- 闲鱼/二手交易（无标准价格体系）
+- 没有具体商品链接的购物讨论
 
 ## 环境依赖
 
